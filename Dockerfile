@@ -1,4 +1,4 @@
-FROM php:8.2-fmp
+FROM php:8.2-fpm
 # System dependencies
 RUN apt-get update && apt-get install -y \
     git curl unzip libpng-dev libonig-dev libxml2-dev zip nodejs npm
