@@ -1,48 +1,29 @@
-FROM php:8.2-apache
+FROM php:8.2-fpm
 
-# Install system dependencies
+# System dependencies
 RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
-    libzip-dev \
-    libpng-dev \
-    && docker-php-ext-install pdo_mysql zip gd \
-    && a2enmod rewrite
+    git curl unzip libpng-dev libonig-dev libxml2-dev zip nodejs npm
 
-# Install Composer
+# Composer install
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Set working directory
+# Set working dir
 WORKDIR /var/www/html
 
-# Copy composer files first
-COPY composer.json composer.lock ./
-
-# Install dependencies with memory limit
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-dev --no-interaction --optimize-autoloader
-
-# Copy application
+# Copy all files
 COPY . .
 
-# Build frontend assets
-RUN if [ -f "package.json" ]; then npm install && npm run build; fi
+# Install PHP dependencies
+RUN composer install --no-dev --optimize-autoloader
 
-# Run Laravel setup commands
-RUN php artisan package:discover --ansi || true \
-    && php artisan config:cache || true \
-    && php artisan route:cache || true
+# Install Node dependencies and build Vite
+RUN npm install && npm run build
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 storage bootstrap/cache
+# Laravel optimize commands
+RUN php artisan config:clear && \
+    php artisan route:clear && \
+    php artisan view:clear
 
-# Apache config
-RUN echo '<VirtualHost *:80>\n\
-    DocumentRoot /var/www/html/public\n\
-    <Directory /var/www/html/public>\n\
-        AllowOverride All\n\
-        Require all granted\n\
-    </Directory>\n\
-</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
+EXPOSE 8000
 
-EXPOSE 80
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
