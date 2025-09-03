@@ -1,66 +1,60 @@
-FROM php:8.2-apache
+# Use multi-stage build for optimization
+FROM node:18-alpine AS node-builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
 
-# System dependencies
+# Main PHP image
+FROM php:8.2-fpm
+
+# Install system dependencies and PHP extensions in one layer
 RUN apt-get update && apt-get install -y \
-    git unzip libpq-dev libzip-dev libpng-dev libonig-dev libxml2-dev zip curl \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+    git \
+    curl \
+    unzip \
+    libpq-dev \
+    libzip-dev \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Workdir
+# Set working directory
 WORKDIR /var/www/html
 
-# Copy project
-COPY . .
+# Copy composer files first (better caching)
+COPY composer.json composer.lock ./
 
 # Install PHP dependencies
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-# Laravel permissions
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
-
-
-
-
-
-
-
-
-
-
-
-FROM php:8.2-fpm
-
-# System dependencies
-RUN apt-get update && apt-get install -y \
-    git curl unzip libpng-dev libonig-dev libxml2-dev zip nodejs npm
-
-# Composer install
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# Set working dir
-WORKDIR /var/www/html
-
-# Copy all files
+# Copy application code
 COPY . .
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader
+# Copy built assets from node builder
+COPY --from=node-builder /app/public/build ./public/build
 
-# Install Node dependencies and build Vite
-RUN npm install && npm run build
+# Set proper permissions
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
+    && chmod -R 755 /var/www/html/storage \
+    && chmod -R 755 /var/www/html/bootstrap/cache
 
-# Laravel optimize commands
+# Laravel optimization
 RUN php artisan config:clear && \
     php artisan route:clear && \
-    php artisan view:clear
+    php artisan view:clear && \
+    php artisan cache:clear
 
+# Expose port
 EXPOSE 8000
 
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
-
-
-
 # Start Laravel
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
