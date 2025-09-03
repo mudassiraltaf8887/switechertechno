@@ -39,8 +39,10 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
 # Copy application code
 COPY . .
 
+# Install Node dependencies and build (if package.json exists)
+RUN if [ -f "package.json" ]; then npm install && npm run build; fi
+
 # Copy built assets from node builder
-COPY --from=node-builder /app/public/build ./public/build
 
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
