@@ -24,6 +24,14 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-dev --no-interaction --optimi
 # Copy application
 COPY . .
 
+# Build frontend assets
+RUN if [ -f "package.json" ]; then npm install && npm run build; fi
+
+# Run Laravel setup commands
+RUN php artisan package:discover --ansi || true \
+    && php artisan config:cache || true \
+    && php artisan route:cache || true
+
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 storage bootstrap/cache
